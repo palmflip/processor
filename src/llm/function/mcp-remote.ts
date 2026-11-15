@@ -23,7 +23,11 @@ function resultText (response: Awaited<ReturnType<Client['callTool']>>): string 
   return response.isError ? `ERROR: ${result}` : result
 }
 
+/** Список инструментов меняется редко: без кэша каждая сессия ждёт listTools (~0,5 с) */
+const TOOLS_CACHE_MS = 10 * 60 * 1000
+
 export class RemoteMCPServer implements FunctionServer {
+  private toolsCache: { at: number, functions: Functions } | null = null
   private readonly logger = getLogger<RemoteMCPServer>()
   private mcp: Client | null = null
   private connecting: Promise<Client> | null = null
@@ -77,6 +81,9 @@ export class RemoteMCPServer implements FunctionServer {
       op: 'get-mcp-functions-server',
       parentSpan
     }, async () => {
+      if (this.toolsCache && Date.now() - this.toolsCache.at < TOOLS_CACHE_MS) {
+        return this.toolsCache.functions
+      }
       const tools = await this.withClient(client => client.listTools())
       const functions: Functions = {}
       for (const tool of tools.tools) {
@@ -89,6 +96,7 @@ export class RemoteMCPServer implements FunctionServer {
           hasResponse: true
         }
       }
+      this.toolsCache = { at: Date.now(), functions }
       return functions
     })
   }
@@ -147,6 +155,7 @@ export class RemoteMCPServer implements FunctionServer {
     } catch (error) {
       this.logger.warn(`MCP ${this.getName()} failed, reconnecting: ${error}`)
       this.mcp = null
+      this.toolsCache = null
       await client.close().catch(() => {})
       return action(await this.connect())
     }
