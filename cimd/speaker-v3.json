@@ -1,0 +1,8 @@
+{
+  "client_id": "https://raw.githubusercontent.com/palmflip/processor/bannie/cimd/speaker-v3.json",
+  "client_name": "Колонка Мини 3 Про (v3rt3p processor)",
+  "redirect_uris": ["http://127.0.0.1:8976/callback"],
+  "grant_types": ["authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
