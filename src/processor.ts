@@ -19,6 +19,7 @@ import {
 } from './llm/types'
 import { getLogger } from './logger'
 import { NlpServiceClient } from './nlp/client'
+import { DeviceHistory } from './session-storage/device-history'
 import { SessionStorage } from './session-storage/types'
 
 const logger = getLogger()
@@ -28,6 +29,9 @@ type ExtendedFunctionInfo = FunctionInfo & {
 }
 
 type ExtendedFunctions = Record<string, ExtendedFunctionInfo>
+
+/** «Алиса, забудь» — сбросить память станции */
+const FORGET_COMMAND = /^(алиса[\s,]+)?(забудь( всё| все| разговор| контекст)?|сбрось (контекст|разговор)|начн(и|ём|ем) (заново|сначала)|новый разговор)[\s.!]*$/i
 
 interface ProcessorParameters {
   cacheSize: number;
@@ -39,6 +43,7 @@ interface ProcessorParameters {
   promptGenerator: PromptGenerator;
   reasoningEffort?: string;
   sessionStorage: SessionStorage<LLMMessage[]>;
+  deviceHistory: DeviceHistory;
   stateFunctionsMessagesType: 'system' | 'tool';
   stateServers: StateServer[];
 }
@@ -108,6 +113,16 @@ export class Processor {
     const messages: LLMMessage[] = []
     const sessionId = randomUUID()
     let isFirstRequest = true
+    // Реплики этого диалога для памяти станции (без системного промпта, состояния и функций)
+    const turns: LLMMessage[] = []
+    let deviceId: string | null = null
+    let historyRestored = false
+    const remember = (message: LLMMessage): void => {
+      turns.push(message)
+      if (deviceId) {
+        this.parameters.deviceHistory.save(deviceId, turns)
+      }
+    }
 
     const independentFunctions = new Differ<ExtendedFunctionInfo>(() => '')
     const dependentFunctions = new Differ<ExtendedFunctionInfo>(() => '')
@@ -274,10 +289,34 @@ export class Processor {
                   return
                 }
 
+                deviceId ??= typeof request.metadata.internal['deviceId'] === 'string'
+                  ? request.metadata.internal['deviceId']
+                  : null
+                if (deviceId && FORGET_COMMAND.test(text)) {
+                  this.parameters.deviceHistory.clear(deviceId)
+                  await send({
+                    data: { directives: [], finished: true, shouldListen: false, text: 'Забыл. Начнём с чистого листа.' },
+                    type: 'partialResponse'
+                  })
+                  webSocket.close()
+                  return
+                }
+                if (deviceId && !historyRestored) {
+                  historyRestored = true
+                  const previous = this.parameters.deviceHistory.load(deviceId)
+                  if (previous.length > 0) {
+                    this.logger.info(`Restored ${previous.length} messages of device ${deviceId}`)
+                    messages.push(...previous)
+                    turns.push(...previous)
+                    isFirstRequest = false // с контекстом ответ из кэша может быть неверным
+                  }
+                }
+
                 messages.push({
                   content: text,
                   role: 'user'
                 })
+                remember({ content: text, role: 'user' })
 
                 while (true) {
                   if (!await startSpan({
@@ -395,6 +434,7 @@ export class Processor {
                       content: responseContent,
                       role: 'assistant'
                     })
+                    remember({ content: responseContent, role: 'assistant' })
 
                     if (!structuredResponse.requireMoreInput && structuredResponse.canCache &&
                     isFirstRequest && hasResponsePromises.length === 0) {
@@ -427,10 +467,12 @@ export class Processor {
                       toolCallResult += `${function_}: ${value}\n`
                     }
 
-                    messages.push({
-                      content: toolCallResult,
-                      role: 'tool'
-                    })
+                    const toolMessage: LLMMessage = {
+                      content: `Результаты вызванных функций:\n${toolCallResult}`,
+                      role: this.parameters.stateFunctionsMessagesType
+                    }
+                    messages.push(toolMessage)
+                    remember(toolMessage)
 
                     return true
                   })) {

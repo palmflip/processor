@@ -5,6 +5,7 @@ import { OpenAI } from 'openai'
 import { Server as WSServer } from 'ws'
 
 import { getEnvironment } from './environment'
+import { loadMcpConfig } from './llm/function/mcp-config'
 import { RemoteMCPServer } from './llm/function/mcp-remote'
 import { RemoteFunctionServer } from './llm/function/remote'
 import { FunctionServer } from './llm/function/types'
@@ -16,6 +17,7 @@ import { LLMMessage } from './llm/types'
 import { getLogger } from './logger'
 import { NlpServiceClient } from './nlp/client'
 import { Processor } from './processor'
+import { DeviceHistory } from './session-storage/device-history'
 import { InMemorySessionStorage } from './session-storage/in-memory'
 
 const logger = getLogger()
@@ -49,7 +51,10 @@ for (const url of environment.PROCESSOR_FUNCTION_SERVER_URLS) {
 
 for (const url of environment.PROCESSOR_MCP_SERVER_URLS) {
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-  functionServers.push(new RemoteMCPServer(url.split('#')[1]!, url.split('#')[0]!))
+  functionServers.push(new RemoteMCPServer(url.split('#')[0]!, url.split('#')[1]!))
+}
+for (const config of loadMcpConfig(environment.PROCESSOR_MCP_CONFIG_PATH)) {
+  functionServers.push(new RemoteMCPServer(config))
 }
 
 (async () => {
@@ -79,10 +84,12 @@ const promptGenerator = new HandlebarsPromptGenerator(
 )
 
 const sessionStorage = new InMemorySessionStorage<LLMMessage[]>()
+const deviceHistory = new DeviceHistory(environment.HISTORY_TTL_SECONDS * 1000, environment.HISTORY_MAX_MESSAGES)
 const nlpService = new NlpServiceClient(environment.NLP_SERVICE_URL, environment.NLP_SERVICE_TIMEOUT_MS)
 
 const processor = new Processor({
   cacheSize: environment.CACHE_SIZE,
+  deviceHistory,
   errorResponseText: environment.ERROR_RESPONSE_TEXT,
   functionServers,
   model: environment.OPENAI_MODEL,

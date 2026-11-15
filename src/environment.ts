@@ -10,6 +10,10 @@ config()
 const environmentType = z.object({
   CACHE_SIZE: z.string().default('1000').transform(value => Number.parseInt(value)),
 
+  /** Сколько секунд станция помнит диалог после последней реплики; 0 — не помнит (как в апстриме) */
+  HISTORY_TTL_SECONDS: z.string().default('0').transform(value => Number.parseInt(value)),
+  HISTORY_MAX_MESSAGES: z.string().default('40').transform(value => Number.parseInt(value)),
+
   ERROR_RESPONSE_TEXT: z.string().default('Произошла ошибка при обработке, попробуйте позже'),
 
   FUNCTIONS_PROMPT_TEMPLATE_PATH: z.string().default('prompt-functions.handlebars'),
@@ -23,6 +27,8 @@ const environmentType = z.object({
   OPENAI_REASONING_EFFORT: z.string().optional(),
   PORT: z.string().default('8080').transform(value => Number.parseInt(value)),
   PROCESSOR_FUNCTION_SERVER_URLS: z.string().default('').transform(urls => urls.split(',').filter(Boolean)),
+  /** JSON со списком MCP-серверов: заголовки, OAuth, фильтр инструментов (см. src/llm/function/mcp-config.ts) */
+  PROCESSOR_MCP_CONFIG_PATH: z.string().default(''),
   PROCESSOR_MCP_SERVER_URLS: z.string().default('').transform(urls => urls.split(',').filter(Boolean)),
   PROCESSOR_STATE_SERVER_URLS: z.string().default('').transform(urls => urls.split(',').filter(Boolean)),
 
