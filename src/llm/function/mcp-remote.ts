@@ -101,6 +101,19 @@ export class RemoteMCPServer implements FunctionServer {
     })
   }
 
+  /** Текущий access-токен OAuth: его просит quasar-server для MCP в сессии gpt-realtime */
+  async accessToken (): Promise<string | null> {
+    return this.tokens ? this.tokens.getAccessToken() : null
+  }
+
+  get serverName (): string {
+    return this.config.name
+  }
+
+  get url (): string {
+    return this.config.url
+  }
+
   getName (): string {
     return `mcp{${this.name}#${this.config.url}}`
   }

@@ -53,8 +53,11 @@ for (const url of environment.PROCESSOR_MCP_SERVER_URLS) {
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   functionServers.push(new RemoteMCPServer(url.split('#')[0]!, url.split('#')[1]!))
 }
+const mcpServers = new Map<string, RemoteMCPServer>()
 for (const config of loadMcpConfig(environment.PROCESSOR_MCP_CONFIG_PATH)) {
-  functionServers.push(new RemoteMCPServer(config))
+  const server = new RemoteMCPServer(config)
+  mcpServers.set(config.name, server)
+  functionServers.push(server)
 }
 
 (async () => {
@@ -103,6 +106,21 @@ const processor = new Processor({
 })
 
 app.use(express.json())
+
+// Внутренняя ручка для quasar-server (режим gpt-realtime): короткий access-токен MCP-сервера.
+// Refresh-токен ротируется, поэтому владелец один — processor. Порт наружу не публикуется.
+app.get('/internal/mcp-token/:name', async (request, response) => {
+  const server = mcpServers.get(request.params.name)
+  if (!server) {
+    response.status(404).json({ error: 'unknown MCP server' })
+    return
+  }
+  try {
+    response.json({ access_token: await server.accessToken(), url: server.url })
+  } catch (error) {
+    response.status(502).json({ error: String(error) })
+  }
+})
 
 const server = app.listen(environment.PORT, error => {
   if (error) {
