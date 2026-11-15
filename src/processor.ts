@@ -30,6 +30,14 @@ type ExtendedFunctionInfo = FunctionInfo & {
 
 type ExtendedFunctions = Record<string, ExtendedFunctionInfo>
 
+function deviceIdOf (internal: Record<string, unknown>): string | null {
+  if (typeof internal['deviceId'] === 'string' && internal['deviceId']) {
+    return internal['deviceId']
+  }
+  const info = internal['info'] as { duid?: unknown } | undefined
+  return typeof info?.duid === 'string' && info.duid ? info.duid : null
+}
+
 /** «Алиса, забудь» — сбросить память станции */
 const FORGET_COMMAND = /^(алиса[\s,]+)?(забудь( всё| все| разговор| контекст)?|сбрось (контекст|разговор)|начн(и|ём|ем) (заново|сначала)|новый разговор)[\s.!]*$/i
 
@@ -289,9 +297,8 @@ export class Processor {
                   return
                 }
 
-                deviceId ??= typeof request.metadata.internal['deviceId'] === 'string'
-                  ? request.metadata.internal['deviceId']
-                  : null
+                // quasar-server кладёт id станции в info.duid; поле deviceId объявлено, но не заполняется
+                deviceId ??= deviceIdOf(request.metadata.internal)
                 if (deviceId && FORGET_COMMAND.test(text)) {
                   this.parameters.deviceHistory.clear(deviceId)
                   await send({
