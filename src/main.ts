@@ -116,7 +116,9 @@ app.get('/internal/mcp-token/:name', async (request, response) => {
     return
   }
   try {
-    response.json({ access_token: await server.accessToken(), url: server.url })
+    // ?min_valid=150 — токен проживёт ещё минимум 150 с (его держит долгая сессия gpt-realtime)
+    const minValid = Number(request.query['min_valid'] ?? 30) * 1000
+    response.json({ access_token: await server.accessToken(minValid), url: server.url })
   } catch (error) {
     response.status(502).json({ error: String(error) })
   }

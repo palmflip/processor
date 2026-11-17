@@ -29,8 +29,9 @@ export class OAuthTokenProvider {
 
   constructor (private readonly settings: OAuthSettings) {}
 
-  async getAccessToken (): Promise<string> {
-    if (this.accessToken && Date.now() < this.expiresAt - 30_000) {
+  /** minValidMs — сколько токен ещё должен прожить; меньше — обновляем заранее */
+  async getAccessToken (minValidMs = 30_000): Promise<string> {
+    if (this.accessToken && Date.now() < this.expiresAt - minValidMs) {
       return this.accessToken
     }
     this.pending ??= this.refresh().finally(() => {
